@@ -97,33 +97,34 @@ class TestResource < MiniTest::Unit::TestCase
   end
 
   def test_acquire_releases_on_kill
-    resource = create_resource :testing, tickets: 1
-    acquired = false
+    begin
+      resource = create_resource :testing, tickets: 1
+      acquired = false
 
-    # Ghetto process synchronization
-    file = Tempfile.new('semian')
-    path = file.path
-    file.close!
+      # Ghetto process synchronization
+      file = Tempfile.new('semian')
+      path = file.path
+      file.close!
 
-    pid = fork do
-      resource.acquire do
-        FileUtils.touch(path)
-        sleep 1000
+      pid = fork do
+        resource.acquire do
+          FileUtils.touch(path)
+          sleep 1000
+        end
       end
+
+      sleep 0.1 until File.exist?(path)
+      assert_raises Semian::TimeoutError do
+        resource.acquire {}
+      end
+
+      Process.kill("KILL", pid)
+      Process.waitpid(pid)
+      resource.acquire { acquired = true }
+      assert acquired
+    ensure
+      FileUtils.rm_f(path) if path
     end
-
-    sleep 0.1 until File.exist?(path)
-    assert_raises Semian::TimeoutError do
-      resource.acquire {}
-    end
-
-    Process.kill("KILL", pid)
-    resource.acquire { acquired = true }
-    assert acquired
-
-    Process.wait
-  ensure
-    FileUtils.rm_f(path) if path
   end
 
   def test_count
