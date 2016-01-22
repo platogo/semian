@@ -138,6 +138,24 @@ module Semian
   def resources
     @resources ||= {}
   end
+
+  if defined?(ActiveRecord)
+    module ActiveRecordError
+      def self.included(base)
+        base.send(:alias_method, :raw_translate_exception, :translate_exception)
+        base.send(:remove_method, :translate_exception)
+      end
+
+      def translate_exception(exception, message)
+        if exception.respond_to?(:semian_identifier)
+          exception
+        else
+          # override in derived class
+          ActiveRecord::StatementInvalid.new(message)
+        end
+      end
+    end
+  end
 end
 
 require 'semian/resource'
@@ -160,4 +178,9 @@ else
     Semian.logger.info("Semian semaphores are disabled, is this what you really want? - all operations will no-op")
   end
 end
+
+if defined?(ActiveRecord)
+  ActiveRecord::ConnectionAdapters::AbstractAdapter.include(Semian::ActiveRecordError)
+end
+
 require 'semian/version'
